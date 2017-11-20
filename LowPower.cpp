@@ -1,7 +1,7 @@
 /*******************************************************************************
 * LowPower Library
-* Version: 1.80
-* Date: 04-10-2018
+* Version: 1.91
+* Date: 21-11-2018
 * Author: Lim Phang Moh
 * Company: Rocket Scream Electronics
 * Website: www.rocketscream.com
@@ -13,6 +13,9 @@
 *
 * Revision  Description
 * ========  ===========
+* 1.91      Add powerDownMoreTime function to sleep more than 8 seconds.
+* 1.90      Added support for ATTINY85, ATTINY84 and declare ISR_RUTINE weak for
+*           your own ISR_RUTINE in your sketch
 * 1.80      Added support for ATmega88 and ATmega168P. PowerExtStandby()
 *           modified because not supported on Atmega88 / Atmega168
 *           Contributed by mrguen.
@@ -753,6 +756,87 @@ void	LowPowerClass::idle(period_t period, adc_t adc, timer5_t timer5,
 
 
 /*******************************************************************************
+* Name: idle
+* Description: Putting ATtyny85/84 into idle state. Please make sure
+*			   you understand the implication and result of disabling module.
+*
+* Argument  	Description
+* =========  	===========
+* 1. period     Duration of low power mode. Use SLEEP_FOREVER to use other wake
+*				up resource:
+*				(a) SLEEP_15MS - 15 ms sleep
+*				(b) SLEEP_30MS - 30 ms sleep
+*				(c) SLEEP_60MS - 60 ms sleep
+*				(d) SLEEP_120MS - 120 ms sleep
+*				(e) SLEEP_250MS - 250 ms sleep
+*				(f) SLEEP_500MS - 500 ms sleep
+*				(g) SLEEP_1S - 1 s sleep
+*				(h) SLEEP_2S - 2 s sleep
+*				(i) SLEEP_4S - 4 s sleep
+*				(j) SLEEP_8S - 8 s sleep
+*				(k) SLEEP_FOREVER - Sleep without waking up through WDT
+*
+* 2. adc		ADC module disable control:
+*				(a) ADC_OFF - Turn off ADC module
+*				(b) ADC_ON - Leave ADC module in its default state
+*
+* 3. timer1		Timer 1 module disable control:
+*				(a) TIMER1_OFF - Turn off Timer 1 module
+*				(b) TIMER1_ON - Leave Timer 1 module in its default state
+*
+* 4. timer0		Timer 0 module disable control:
+*				(a) TIMER0_OFF - Turn off Timer 0 module
+*				(b) TIMER0_ON - Leave Timer 0 module in its default state
+*
+* 5.usi			USI module disable control:
+*				(a) USI_OFF - Turn off USI module
+*				(b) USI_ON - Leave USI module in its default state
+*
+*******************************************************************************/
+#if defined (__AVR_ATtiny85__) || defined (__AVR_ATtiny84__)
+void	LowPowerClass::idle(period_t period, adc_t adc, timer1_t timer1, timer0_t timer0, usi_t usi)
+{
+	// Temporary clock source variable
+	unsigned char clockSource = 0;
+
+	if (adc == ADC_OFF)
+	{
+		ADCSRA &= ~(1 << ADEN);
+		power_adc_disable();
+	}
+
+	if (timer1 == TIMER1_OFF)	power_timer1_disable();
+	if (timer0 == TIMER0_OFF)	power_timer0_disable();
+	if (usi == USI_OFF)			power_usi_disable();
+
+	if (period != SLEEP_FOREVER)
+	{
+		wdt_enable(period);
+		#if defined (__AVR_ATtiny85__) || defined (__AVR_ATtiny84__)
+			WDTCR |= (1 << WDIE);
+		#else
+			WDTCSR |= (1 << WDIE);
+		#endif
+	}
+
+	lowPowerBodOn(SLEEP_MODE_IDLE);
+
+	if (adc == ADC_OFF)
+	{
+		power_adc_enable();
+		ADCSRA |= (1 << ADEN);
+	}
+
+	if (timer1 == TIMER1_OFF)	power_timer1_enable();
+	if (timer0 == TIMER0_OFF)	power_timer0_enable();
+	if (usi == USI_OFF)			power_usi_enable();
+}
+
+#endif
+
+#if !((defined __AVR_ATtiny85__) || (defined __AVR_ATtiny84__))
+
+/*******************************************************************************
 * Name: adcNoiseReduction
 * Description: Putting microcontroller into ADC noise reduction state. This is
 *			   a very useful state when using the ADC to achieve best and low
@@ -825,64 +909,6 @@ void	LowPowerClass::adcNoiseReduction(period_t period, adc_t adc,
 
 	}
 	#endif
-}
-
-/*******************************************************************************
-* Name: powerDown
-* Description: Putting microcontroller into power down state. This is
-*			   the lowest current consumption state. Use this together with
-*			   external pin interrupt to wake up through external event
-*			   triggering (example: RTC clockout pin, SD card detect pin).
-*
-* Argument  	Description
-* =========  	===========
-* 1. period     Duration of low power mode. Use SLEEP_FOREVER to use other wake
-*				up resource:
-*				(a) SLEEP_15MS - 15 ms sleep
-*				(b) SLEEP_30MS - 30 ms sleep
-*				(c) SLEEP_60MS - 60 ms sleep
-*				(d) SLEEP_120MS - 120 ms sleep
-*				(e) SLEEP_250MS - 250 ms sleep
-*				(f) SLEEP_500MS - 500 ms sleep
-*				(g) SLEEP_1S - 1 s sleep
-*				(h) SLEEP_2S - 2 s sleep
-*				(i) SLEEP_4S - 4 s sleep
-*				(j) SLEEP_8S - 8 s sleep
-*				(k) SLEEP_FOREVER - Sleep without waking up through WDT
-*
-* 2. adc		ADC module disable control. Turning off the ADC module is
-*				basically removing the purpose of this low power mode.
-*				(a) ADC_OFF - Turn off ADC module
-*				(b) ADC_ON - Leave ADC module in its default state
-*
-* 3. bod		Brown Out Detector (BOD) module disable control:
-*				(a) BOD_OFF - Turn off BOD module
-*				(b) BOD_ON - Leave BOD module in its default state
-*
-*******************************************************************************/
-void	LowPowerClass::powerDown(period_t period, adc_t adc, bod_t bod)
-{
-	if (adc == ADC_OFF)	ADCSRA &= ~(1 << ADEN);
-
-	if (period != SLEEP_FOREVER)
-	{
-		wdt_enable(period);
-		WDTCSR |= (1 << WDIE);
-	}
-	if (bod == BOD_OFF)
-	{
-		#if defined (__AVR_ATmega328P__) || defined (__AVR_ATmega168P__)
-			lowPowerBodOff(SLEEP_MODE_PWR_DOWN);
-		#else
-			lowPowerBodOn(SLEEP_MODE_PWR_DOWN);
-		#endif
-	}
-	else
-	{
-		lowPowerBodOn(SLEEP_MODE_PWR_DOWN);
-	}
-
-	if (adc == ADC_OFF) ADCSRA |= (1 << ADEN);
 }
 
 /*******************************************************************************
@@ -1129,19 +1155,97 @@ void	LowPowerClass::powerExtStandby(period_t period, adc_t adc, bod_t bod,
 	}
 	#endif
 }
+#endif
+
+
+/*******************************************************************************
+* Name: powerDown
+* Description: Putting microcontroller into power down state. This is
+*			   the lowest current consumption state. Use this together with
+*			   external pin interrupt to wake up through external event
+*			   triggering (example: RTC clockout pin, SD card detect pin).
+*
+* Argument  	Description
+* =========  	===========
+* 1. period     Duration of low power mode. Use SLEEP_FOREVER to use other wake
+*				up resource:
+*				(a) SLEEP_15MS - 15 ms sleep
+*				(b) SLEEP_30MS - 30 ms sleep
+*				(c) SLEEP_60MS - 60 ms sleep
+*				(d) SLEEP_120MS - 120 ms sleep
+*				(e) SLEEP_250MS - 250 ms sleep
+*				(f) SLEEP_500MS - 500 ms sleep
+*				(g) SLEEP_1S - 1 s sleep
+*				(h) SLEEP_2S - 2 s sleep
+*				(i) SLEEP_4S - 4 s sleep
+*				(j) SLEEP_8S - 8 s sleep
+*				(k) SLEEP_FOREVER - Sleep without waking up through WDT
+*
+* 2. adc		ADC module disable control. Turning off the ADC module is
+*				basically removing the purpose of this low power mode.
+*				(a) ADC_OFF - Turn off ADC module
+*				(b) ADC_ON - Leave ADC module in its default state
+*
+* 3. bod		Brown Out Detector (BOD) module disable control:
+*				(a) BOD_OFF - Turn off BOD module
+*				(b) BOD_ON - Leave BOD module in its default state
+*
+*******************************************************************************/
+void	LowPowerClass::powerDown(period_t period, adc_t adc, bod_t bod)
+{
+	if (adc == ADC_OFF)	ADCSRA &= ~(1 << ADEN);
+
+	if (period != SLEEP_FOREVER)
+	{
+		wdt_enable(period);
+		#if defined (__AVR_ATtiny85__) || defined (__AVR_ATtiny84__)
+			WDTCR |= (1 << WDIE);
+		#else
+			WDTCSR |= (1 << WDIE);
+		#endif
+	}
+	if (bod == BOD_OFF)
+	{
+		#if defined __AVR_ATmega328P__
+			lowPowerBodOff(SLEEP_MODE_PWR_DOWN);
+		#else
+			lowPowerBodOn(SLEEP_MODE_PWR_DOWN);
+		#endif
+	}
+	else
+	{
+		lowPowerBodOn(SLEEP_MODE_PWR_DOWN);
+	}
+
+	if (adc == ADC_OFF) ADCSRA |= (1 << ADEN);
+}
+
+void	LowPowerClass::powerDownMoreTime(unsigned long seconds, adc_t adc, bod_t bod)
+{
+  while (seconds >= 8) {powerDown(SLEEP_8S, adc, bod); seconds -=8; }
+  if (seconds >= 4) {powerDown(SLEEP_4S, adc, bod); seconds -=4; }
+  if (seconds >= 2) {powerDown(SLEEP_2S, adc, bod); seconds -=2; }
+  if (seconds >= 1) {powerDown(SLEEP_1S, adc, bod); seconds -=1; }
+}
 
 /*******************************************************************************
 * Name: ISR (WDT_vect)
 * Description: Watchdog Timer interrupt service routine. This routine is
 *		       required to allow automatic WDIF and WDIE bit clearance in
-*			   hardware.
+*			   hardware. You could override ISR_RUTINE in your sketch
 *
 *******************************************************************************/
-ISR (WDT_vect)
-{
+__attribute__((weak))
+void ISR_RUTINE() {
 	// WDIE & WDIF is cleared in hardware upon entering this ISR
 	wdt_disable();
 }
+ISR (WDT_vect)
+{
+	ISR_RUTINE();
+}
+
+
 
 #elif defined (__arm__)
 #if defined (__SAMD21G18A__)

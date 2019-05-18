@@ -812,7 +812,7 @@ void	LowPowerClass::idle(period_t period, adc_t adc, timer1_t timer1, timer0_t t
 	if (period != SLEEP_FOREVER)
 	{
 		wdt_enable(period);
-		#if defined (__AVR_ATtiny85__) || defined (__AVR_ATtiny84__)
+		#if defined (__AVR_ATtiny85__) || defined (__AVR_ATtiny84__) || defined (__AVR_ATtiny13__) || defined (__AVR_ATtiny13A__)
 			WDTCR |= (1 << WDIE);
 		#else
 			WDTCSR |= (1 << WDIE);
@@ -834,7 +834,41 @@ void	LowPowerClass::idle(period_t period, adc_t adc, timer1_t timer1, timer0_t t
 
 #endif
 
-#if !((defined __AVR_ATtiny85__) || (defined __AVR_ATtiny84__))
+#if defined (__AVR_ATtiny13__) || defined (__AVR_ATtiny13A__)
+void	LowPowerClass::idle(period_t period, adc_t adc, timer0_t timer0)
+{
+	// Temporary clock source variable
+	unsigned char clockSource = 0;
+
+	if (adc == ADC_OFF)
+	{
+		ADCSRA &= ~(1 << ADEN);
+		power_adc_disable();
+	}
+
+	if (timer0 == TIMER0_OFF)	power_timer0_disable();
+
+	if (period != SLEEP_FOREVER)
+	{
+		wdt_enable(period);
+		WDTCR |= (1 << WDTIE);
+
+	}
+
+	lowPowerBodOn(SLEEP_MODE_IDLE);
+
+	if (adc == ADC_OFF)
+	{
+		power_adc_enable();
+		ADCSRA |= (1 << ADEN);
+	}
+
+	if (timer0 == TIMER0_OFF)	power_timer0_enable();
+}
+
+#endif
+
+#if !((defined __AVR_ATtiny85__) || (defined __AVR_ATtiny84__) || (defined __AVR_ATtiny13__) || (defined __AVR_ATtiny13A__))
 
 /*******************************************************************************
 * Name: adcNoiseReduction
@@ -1200,6 +1234,8 @@ void	LowPowerClass::powerDown(period_t period, adc_t adc, bod_t bod)
 		wdt_enable(period);
 		#if defined (__AVR_ATtiny85__) || defined (__AVR_ATtiny84__)
 			WDTCR |= (1 << WDIE);
+		#elif defined (__AVR_ATtiny13__) || defined (__AVR_ATtiny13A__)
+		  WDTCR |= (1 << WDTIE);
 		#else
 			WDTCSR |= (1 << WDIE);
 		#endif

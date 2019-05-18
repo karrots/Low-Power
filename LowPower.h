@@ -152,6 +152,8 @@ class LowPowerClass
 				             spi_t spi, usart1_t usart1, twi_t twi, usb_t usb);
 			#elif (defined __AVR_ATtiny85__) || (defined __AVR_ATtiny84__)
 				 void idle(period_t period, adc_t adc, timer1_t timer1, timer0_t timer0, usi_t usi);
+		  #elif (defined __AVR_ATtiny13__) || (defined __AVR_ATtiny13A__)
+		     void idle(period_t period, adc_t adc, timer0_t timer0);
 			#else
 				#error "Please ensure chosen MCU is either ATMEGA 88, 168, 168P, 328P, 32U4, 2560, 256RFR2 or ATTINY 84/85 ."
 			#endif
@@ -164,7 +166,7 @@ class LowPowerClass
 			#endif
 
 			void	powerDown(period_t period, adc_t adc, bod_t bod) __attribute__((optimize("-O1")));
-			void    powerDownMoreTime(unsigned long seconds, adc_t adc, bod_t bod) __attribute__((optimize("-O1")));
+			void  powerDownMoreTime(unsigned long seconds, adc_t adc, bod_t bod) __attribute__((optimize("-O1")));
 		#elif defined (__arm__)
 
 			#if defined (__SAMD21G18A__)
